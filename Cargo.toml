@@ -1,0 +1,9 @@
+[package]
+name = "serial_mon"
+version = "0.1.0"
+authors = ["Eric Trombly <etrombly@yahoo.com>"]
+edition = "2018"
+
+[dependencies]
+tui = "0.5.1"
+termion = "1.5.1"
