@@ -39,15 +39,15 @@ impl App {
         let mut buf: [u8; 13] = [0; 13];
         let mut data = [0; 12];
 
-        self.port.read(&mut buf[..])?;
-        if let Ok(_) = cobs::decode(&buf, &mut data) {
+        self.port.read_exact(&mut buf[..])?;
+        if cobs::decode(&buf, &mut data).is_ok() {
             let sleep = LE::read_u32(&data[0..4]);
             let x = LE::read_f32(&data[4..8]);
             let y = LE::read_f32(&data[8..12]);
             let cpu = if sleep > 64_000_000 {
                 100.0
             } else {
-                (64_000_000_f64 - sleep as f64) / 64_000_000_f64 * 100_f64
+                (64_000_000_f64 - f64::from(sleep)) / 64_000_000_f64 * 100_f64
             };
             return Ok((cpu, x, y));
         }
@@ -55,7 +55,7 @@ impl App {
     }
 
     fn write_serial(&mut self, bytes: &[u8]) {
-        while let Err(_) = self.port.write(bytes) {
+        while self.port.write(bytes).is_err() {
             thread::sleep(Duration::from_millis(10));
         }
     }
@@ -79,11 +79,26 @@ fn main() -> Result<(), failure::Error> {
     let events = Events::with_config(Config::default());
     // Create default app state
     let mut app = App::default();
-    app.port.set_timeout(Duration::from_millis(1)).unwrap();
+    app.port.reconfigure(&|settings| {
+            settings.set_baud_rate(serial::Baud9600)?;
+            settings.set_char_size(serial::Bits8);
+            settings.set_parity(serial::ParityNone);
+            settings.set_stop_bits(serial::Stop1);
+            settings.set_flow_control(serial::FlowNone);
+            Ok(())
+    })?;
+    app.port.set_timeout(Duration::from_millis(1))?;
 
     loop {
         terminal.draw(|mut f| {
-            let (cpu, x, y) = app.read_serial().unwrap();
+            let mut cpu = 0.0_f64;
+            let mut x = 0.0_f32;
+            let mut y = 0.0_f32;
+            if let Ok((t_cpu, t_x, t_y)) = app.read_serial() {
+                cpu= t_cpu;
+                x = t_x;
+                y = t_y;
+            }
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .margin(1)
